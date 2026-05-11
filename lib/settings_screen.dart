@@ -10,27 +10,45 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _storage = const FlutterSecureStorage();
-  final _controller = TextEditingController();
+  final _keyController = TextEditingController();
+  final _promptController = TextEditingController();
   bool _saved = false;
   bool _obscure = true;
+  double _speechRate = 0.7;
+  int _maxTokens = 256;
+
+  static const String _defaultPrompt =
+      'Odgovori kratko i jasno, maksimalno 1-2 rečenice. Koristi prirodan govorni jezik.';
 
   @override
   void initState() {
     super.initState();
-    _loadKey();
+    _loadSettings();
   }
 
-  Future<void> _loadKey() async {
+  Future<void> _loadSettings() async {
     final key = await _storage.read(key: 'anthropic_api_key');
-    if (key != null) {
-      _controller.text = key;
-    }
+    final prompt = await _storage.read(key: 'system_prompt');
+    final rate = await _storage.read(key: 'speech_rate');
+    final tokens = await _storage.read(key: 'max_tokens');
+
+    setState(() {
+      _keyController.text = key ?? '';
+      _promptController.text = prompt ?? _defaultPrompt;
+      _speechRate = double.tryParse(rate ?? '0.7') ?? 0.7;
+      _maxTokens = int.tryParse(tokens ?? '256') ?? 256;
+    });
   }
 
-  Future<void> _saveKey() async {
-    final key = _controller.text.trim();
+  Future<void> _saveSettings() async {
+    final key = _keyController.text.trim();
     if (key.isEmpty) return;
+
     await _storage.write(key: 'anthropic_api_key', value: key);
+    await _storage.write(key: 'system_prompt', value: _promptController.text.trim());
+    await _storage.write(key: 'speech_rate', value: _speechRate.toString());
+    await _storage.write(key: 'max_tokens', value: _maxTokens.toString());
+
     setState(() => _saved = true);
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _saved = false);
@@ -39,9 +57,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
-    _controller.dispose();
+    _keyController.dispose();
+    _promptController.dispose();
     super.dispose();
   }
+
+  Widget _sectionLabel(String text) => Padding(
+        padding: const EdgeInsets.only(top: 28, bottom: 8),
+        child: Text(
+          text,
+          style: const TextStyle(color: Colors.white70, fontSize: 13, letterSpacing: 1),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -55,58 +82,116 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: TextStyle(color: Colors.white, letterSpacing: 2),
         ),
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 20),
-            const Text(
-              'Anthropic API Key',
-              style: TextStyle(color: Colors.white70, fontSize: 14, letterSpacing: 1),
-            ),
-            const SizedBox(height: 8),
+
+            // --- API KEY ---
+            _sectionLabel('ANTHROPIC API KEY'),
             TextField(
-              controller: _controller,
+              controller: _keyController,
               obscureText: _obscure,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
+              style: const TextStyle(color: Colors.white, fontSize: 13),
               decoration: InputDecoration(
                 hintText: 'sk-ant-...',
                 hintStyle: const TextStyle(color: Colors.white24),
                 filled: true,
                 fillColor: Colors.indigo.withOpacity(0.1),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.indigo.withOpacity(0.4)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.indigo.withOpacity(0.4)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.indigo),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.indigo.withOpacity(0.4))),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.indigo.withOpacity(0.4))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.indigo)),
                 suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscure ? Icons.visibility_off : Icons.visibility,
-                    color: Colors.white38,
-                  ),
+                  icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility,
+                      color: Colors.white38),
                   onPressed: () => setState(() => _obscure = !_obscure),
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+
+            // --- SYSTEM PROMPT ---
+            _sectionLabel('SYSTEM PROMPT'),
+            TextField(
+              controller: _promptController,
+              maxLines: 4,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.indigo.withOpacity(0.1),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.indigo.withOpacity(0.4))),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.indigo.withOpacity(0.4))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.indigo)),
+              ),
+            ),
+
+            // --- SPEECH RATE ---
+            _sectionLabel('BRZINA GOVORA'),
+            Row(
+              children: [
+                const Text('Sporo', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                Expanded(
+                  child: Slider(
+                    value: _speechRate,
+                    min: 0.3,
+                    max: 1.5,
+                    divisions: 12,
+                    activeColor: Colors.indigo,
+                    inactiveColor: Colors.indigo.withOpacity(0.2),
+                    onChanged: (v) => setState(() => _speechRate = v),
+                  ),
+                ),
+                const Text('Brzo', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                const SizedBox(width: 8),
+                Text(
+                  _speechRate.toStringAsFixed(1),
+                  style: const TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+              ],
+            ),
+
+            // --- MAX TOKENS ---
+            _sectionLabel('DUŽINA ODGOVORA (MAX TOKENS)'),
+            Row(
+              children: [
+                const Text('Kratko', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                Expanded(
+                  child: Slider(
+                    value: _maxTokens.toDouble(),
+                    min: 64,
+                    max: 1024,
+                    divisions: 15,
+                    activeColor: Colors.indigo,
+                    inactiveColor: Colors.indigo.withOpacity(0.2),
+                    onChanged: (v) => setState(() => _maxTokens = v.round()),
+                  ),
+                ),
+                const Text('Dugo', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                const SizedBox(width: 8),
+                Text(
+                  '$_maxTokens',
+                  style: const TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 32),
+
+            // --- SAVE ---
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _saveKey,
+                onPressed: _saveSettings,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.indigo,
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 child: Text(
                   _saved ? '✓ Sačuvano' : 'Sačuvaj',
@@ -114,11 +199,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+
+            const SizedBox(height: 20),
             const Text(
-              'API key se čuva sigurno u Android Keystore i nikad ne napušta uređaj.',
-              style: TextStyle(color: Colors.white38, fontSize: 12),
+              'Svi podaci se čuvaju sigurno u Android Keystore i nikad ne napuštaju uređaj.',
+              style: TextStyle(color: Colors.white24, fontSize: 12),
             ),
+            const SizedBox(height: 20),
           ],
         ),
       ),

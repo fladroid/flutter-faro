@@ -44,23 +44,36 @@ class _FaroHomeState extends State<FaroHome> {
   bool _loading = false;
   String _userText = '';
   String _claudeText = '';
+
   String _apiKey = '';
+  String _systemPrompt = '';
+  double _speechRate = 0.7;
+  int _maxTokens = 256;
 
   @override
   void initState() {
     super.initState();
-    _loadApiKey();
-    _initTts();
+    _loadSettings();
   }
 
-  Future<void> _loadApiKey() async {
+  Future<void> _loadSettings() async {
     final key = await _storage.read(key: 'anthropic_api_key');
-    setState(() => _apiKey = key ?? '');
-  }
+    final prompt = await _storage.read(key: 'system_prompt');
+    final rate = await _storage.read(key: 'speech_rate');
+    final tokens = await _storage.read(key: 'max_tokens');
 
-  Future<void> _initTts() async {
+    const defaultPrompt =
+        'Odgovori kratko i jasno, maksimalno 1-2 rečenice. Koristi prirodan govorni jezik.';
+
+    setState(() {
+      _apiKey = key ?? '';
+      _systemPrompt = (prompt != null && prompt.isNotEmpty) ? prompt : defaultPrompt;
+      _speechRate = double.tryParse(rate ?? '0.7') ?? 0.7;
+      _maxTokens = int.tryParse(tokens ?? '256') ?? 256;
+    });
+
     await _tts.setLanguage('sr-RS');
-    await _tts.setSpeechRate(0.9);
+    await _tts.setSpeechRate(_speechRate);
     await _tts.setVolume(1.0);
   }
 
@@ -114,7 +127,8 @@ class _FaroHomeState extends State<FaroHome> {
         },
         body: jsonEncode({
           'model': 'claude-sonnet-4-6',
-          'max_tokens': 1024,
+          'max_tokens': _maxTokens,
+          'system': _systemPrompt,
           'messages': [
             {'role': 'user', 'content': text}
           ],
@@ -129,6 +143,7 @@ class _FaroHomeState extends State<FaroHome> {
         _loading = false;
       });
 
+      await _tts.setSpeechRate(_speechRate);
       await _tts.speak(reply);
     } catch (e) {
       setState(() {
@@ -152,7 +167,7 @@ class _FaroHomeState extends State<FaroHome> {
                 context,
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),
               );
-              _loadApiKey();
+              _loadSettings();
             },
           ),
         ],
