@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:convert';
-import 'dart:io';
+import 'settings_screen.dart';
 
 void main() {
   runApp(const FaroApp());
@@ -35,6 +36,7 @@ class FaroHome extends StatefulWidget {
 class _FaroHomeState extends State<FaroHome> {
   final SpeechToText _stt = SpeechToText();
   final FlutterTts _tts = FlutterTts();
+  final _storage = const FlutterSecureStorage();
 
   static const String _apiUrl = 'https://api.anthropic.com/v1/messages';
 
@@ -52,14 +54,8 @@ class _FaroHomeState extends State<FaroHome> {
   }
 
   Future<void> _loadApiKey() async {
-    try {
-      final home = Platform.environment['HOME'] ?? '/root';
-      final file = File('$home/.ant');
-      final key = await file.readAsString();
-      setState(() => _apiKey = key.trim());
-    } catch (e) {
-      setState(() => _claudeText = 'Greška: API key nije pronađen (~/.ant)');
-    }
+    final key = await _storage.read(key: 'anthropic_api_key');
+    setState(() => _apiKey = key ?? '');
   }
 
   Future<void> _initTts() async {
@@ -69,6 +65,11 @@ class _FaroHomeState extends State<FaroHome> {
   }
 
   Future<void> _listen() async {
+    if (_apiKey.isEmpty) {
+      setState(() => _claudeText = 'Unesi API key u Postavkama prije korištenja.');
+      return;
+    }
+
     if (_listening) {
       await _stt.stop();
       setState(() => _listening = false);
@@ -81,6 +82,7 @@ class _FaroHomeState extends State<FaroHome> {
     setState(() {
       _listening = true;
       _userText = '';
+      _claudeText = '';
     });
 
     await _stt.listen(
@@ -97,11 +99,6 @@ class _FaroHomeState extends State<FaroHome> {
   }
 
   Future<void> _sendToClaude(String text) async {
-    if (_apiKey.isEmpty) {
-      setState(() => _claudeText = 'API key nije učitan.');
-      return;
-    }
-
     setState(() {
       _loading = true;
       _claudeText = '';
@@ -145,12 +142,27 @@ class _FaroHomeState extends State<FaroHome> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings, color: Colors.white54),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+              _loadApiKey();
+            },
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             children: [
-              const SizedBox(height: 40),
+              const SizedBox(height: 20),
               const Text(
                 'FARO',
                 style: TextStyle(
