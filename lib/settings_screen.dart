@@ -16,9 +16,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _obscure = true;
   double _speechRate = 0.7;
   int _maxTokens = 256;
+  String _language = 'en';
 
   static const String _defaultPrompt =
       'Odgovori kratko i jasno, maksimalno 1-2 rečenice. Koristi prirodan govorni jezik.';
+
+  static const Map<String, String> _languages = {
+    'en': 'English',
+    'de': 'Deutsch',
+    'hr': 'Hrvatski',
+    'sr': 'Srpski',
+  };
 
   @override
   void initState() {
@@ -31,12 +39,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prompt = await _storage.read(key: 'system_prompt');
     final rate = await _storage.read(key: 'speech_rate');
     final tokens = await _storage.read(key: 'max_tokens');
+    final lang = await _storage.read(key: 'language');
 
     setState(() {
       _keyController.text = key ?? '';
-      _promptController.text = prompt ?? _defaultPrompt;
+      _promptController.text = (prompt != null && prompt.isNotEmpty) ? prompt : _defaultPrompt;
       _speechRate = double.tryParse(rate ?? '0.7') ?? 0.7;
       _maxTokens = int.tryParse(tokens ?? '256') ?? 256;
+      _language = lang ?? 'en';
     });
   }
 
@@ -48,6 +58,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _storage.write(key: 'system_prompt', value: _promptController.text.trim());
     await _storage.write(key: 'speech_rate', value: _speechRate.toString());
     await _storage.write(key: 'max_tokens', value: _maxTokens.toString());
+    await _storage.write(key: 'language', value: _language);
 
     setState(() => _saved = true);
     Future.delayed(const Duration(seconds: 2), () {
@@ -113,6 +124,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
 
+            // --- JEZIK ---
+            _sectionLabel('JEZIK ODGOVORA'),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.indigo.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.indigo.withOpacity(0.4)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _language,
+                  dropdownColor: const Color(0xFF1a1a2e),
+                  isExpanded: true,
+                  items: _languages.entries.map((e) => DropdownMenuItem(
+                    value: e.key,
+                    child: Text(e.value,
+                        style: const TextStyle(color: Colors.white, fontSize: 15)),
+                  )).toList(),
+                  onChanged: (v) => setState(() => _language = v ?? 'en'),
+                ),
+              ),
+            ),
+
             // --- SYSTEM PROMPT ---
             _sectionLabel('SYSTEM PROMPT'),
             TextField(
@@ -149,10 +184,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const Text('Brzo', style: TextStyle(color: Colors.white38, fontSize: 12)),
                 const SizedBox(width: 8),
-                Text(
-                  _speechRate.toStringAsFixed(1),
-                  style: const TextStyle(color: Colors.white54, fontSize: 13),
-                ),
+                Text(_speechRate.toStringAsFixed(1),
+                    style: const TextStyle(color: Colors.white54, fontSize: 13)),
               ],
             ),
 
@@ -174,10 +207,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const Text('Dugo', style: TextStyle(color: Colors.white38, fontSize: 12)),
                 const SizedBox(width: 8),
-                Text(
-                  '$_maxTokens',
-                  style: const TextStyle(color: Colors.white54, fontSize: 13),
-                ),
+                Text('$_maxTokens',
+                    style: const TextStyle(color: Colors.white54, fontSize: 13)),
               ],
             ),
 

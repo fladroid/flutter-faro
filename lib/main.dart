@@ -10,6 +10,43 @@ void main() {
   runApp(const FaroApp());
 }
 
+// Uklanja emoji iz teksta prije TTS-a
+String stripEmoji(String text) {
+  return text.replaceAll(
+    RegExp(
+      r'[\u{1F000}-\u{1FFFF}]'
+      r'|[\u{2600}-\u{27BF}]'
+      r'|[\u{2300}-\u{23FF}]'
+      r'|[\u{FE00}-\u{FEFF}]'
+      r'|[\u{1F900}-\u{1F9FF}]'
+      r'|[\u{1FA00}-\u{1FA6F}]'
+      r'|[\u{1FA70}-\u{1FAFF}]',
+      unicode: true,
+    ),
+    '',
+  ).replaceAll(RegExp(r'  +'), ' ').trim();
+}
+
+// TTS locale po jeziku
+String ttsLocale(String lang) {
+  switch (lang) {
+    case 'de': return 'de-DE';
+    case 'hr': return 'hr-HR';
+    case 'sr': return 'sr-RS';
+    default:   return 'en-US';
+  }
+}
+
+// Instrukcija Claudeu za jezik
+String languageInstruction(String lang) {
+  switch (lang) {
+    case 'de': return 'Always respond in German.';
+    case 'hr': return 'Uvijek odgovaraj na hrvatskom jeziku.';
+    case 'sr': return 'Uvijek odgovaraj na srpskom jeziku.';
+    default:   return 'Always respond in English.';
+  }
+}
+
 class FaroApp extends StatelessWidget {
   const FaroApp({super.key});
 
@@ -49,6 +86,10 @@ class _FaroHomeState extends State<FaroHome> {
   String _systemPrompt = '';
   double _speechRate = 0.7;
   int _maxTokens = 256;
+  String _language = 'en';
+
+  static const String _defaultPrompt =
+      'Odgovori kratko i jasno, maksimalno 1-2 rečenice. Koristi prirodan govorni jezik.';
 
   @override
   void initState() {
@@ -61,18 +102,17 @@ class _FaroHomeState extends State<FaroHome> {
     final prompt = await _storage.read(key: 'system_prompt');
     final rate = await _storage.read(key: 'speech_rate');
     final tokens = await _storage.read(key: 'max_tokens');
-
-    const defaultPrompt =
-        'Odgovori kratko i jasno, maksimalno 1-2 rečenice. Koristi prirodan govorni jezik.';
+    final lang = await _storage.read(key: 'language');
 
     setState(() {
       _apiKey = key ?? '';
-      _systemPrompt = (prompt != null && prompt.isNotEmpty) ? prompt : defaultPrompt;
+      _systemPrompt = (prompt != null && prompt.isNotEmpty) ? prompt : _defaultPrompt;
       _speechRate = double.tryParse(rate ?? '0.7') ?? 0.7;
       _maxTokens = int.tryParse(tokens ?? '256') ?? 256;
+      _language = lang ?? 'en';
     });
 
-    await _tts.setLanguage('sr-RS');
+    await _tts.setLanguage(ttsLocale(_language));
     await _tts.setSpeechRate(_speechRate);
     await _tts.setVolume(1.0);
   }
@@ -118,6 +158,9 @@ class _FaroHomeState extends State<FaroHome> {
     });
 
     try {
+      // System prompt = korisnikov prompt + jezična instrukcija
+      final fullSystemPrompt = '$_systemPrompt\n${languageInstruction(_language)}';
+
       final response = await http.post(
         Uri.parse(_apiUrl),
         headers: {
@@ -128,7 +171,7 @@ class _FaroHomeState extends State<FaroHome> {
         body: jsonEncode({
           'model': 'claude-sonnet-4-6',
           'max_tokens': _maxTokens,
-          'system': _systemPrompt,
+          'system': fullSystemPrompt,
           'messages': [
             {'role': 'user', 'content': text}
           ],
@@ -143,8 +186,10 @@ class _FaroHomeState extends State<FaroHome> {
         _loading = false;
       });
 
+      // Ekran prikazuje originalni tekst s emoji, TTS dobija očišćeni
+      await _tts.setLanguage(ttsLocale(_language));
       await _tts.setSpeechRate(_speechRate);
-      await _tts.speak(reply);
+      await _tts.speak(stripEmoji(reply));
     } catch (e) {
       setState(() {
         _claudeText = 'Greška: $e';
